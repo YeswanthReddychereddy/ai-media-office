@@ -1,15 +1,30 @@
-import Database from 'better-sqlite3';
-import {mkdirSync} from 'node:fs';
-import {dirname,resolve} from 'node:path';
-import {randomUUID} from 'node:crypto';
-import {STAGES,type Project,type Agent,type Task,type Artifact,type Approval,type Snapshot,type Message,type CompanyEvent,type Memory} from './types';
-export const now=()=>new Date().toISOString();
+import Database from "better-sqlite3";
+import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import {
+  STAGES,
+  type Project,
+  type Agent,
+  type Task,
+  type Artifact,
+  type Approval,
+  type Snapshot,
+  type Message,
+  type CompanyEvent,
+  type Memory,
+} from "./types";
+export const now = () => new Date().toISOString();
 export class CompanyRepository {
- db:Database.Database;
- constructor(path=process.env.DATABASE_PATH||'./data/company.sqlite') {
-  if(path!==':memory:')mkdirSync(dirname(resolve(path)),{recursive:true});
-  this.db=new Database(path); this.db.pragma('journal_mode = WAL');this.db.pragma('busy_timeout = 5000');this.db.pragma('foreign_keys = ON');
-  this.db.exec(`
+  db: Database.Database;
+  constructor(path = process.env.DATABASE_PATH || "./data/company.sqlite") {
+    if (path !== ":memory:")
+      mkdirSync(dirname(resolve(path)), { recursive: true });
+    this.db = new Database(path);
+    this.db.pragma("journal_mode = WAL");
+    this.db.pragma("busy_timeout = 5000");
+    this.db.pragma("foreign_keys = ON");
+    this.db.exec(`
   CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY,title TEXT NOT NULL,objective TEXT NOT NULL,status TEXT NOT NULL,stage TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,priority INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,error TEXT);
   CREATE TABLE IF NOT EXISTS agents(id TEXT PRIMARY KEY,name TEXT NOT NULL,role TEXT NOT NULL,department TEXT NOT NULL,specialty TEXT NOT NULL,style TEXT NOT NULL,strengths TEXT NOT NULL,responsibilities TEXT NOT NULL,avatar TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'IDLE',task_id TEXT);
   CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),parent_task_id TEXT,department TEXT NOT NULL,assigned_agent TEXT NOT NULL REFERENCES agents(id),stage TEXT NOT NULL,title TEXT NOT NULL,status TEXT NOT NULL,priority INTEGER NOT NULL DEFAULT 0,dependencies TEXT NOT NULL DEFAULT '[]',attempt INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,started_at TEXT,updated_at TEXT NOT NULL,finished_at TEXT,input_artifacts TEXT NOT NULL DEFAULT '[]',output_artifacts TEXT NOT NULL DEFAULT '[]',error TEXT,quality_score REAL,founder_approval_required INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL,UNIQUE(project_id,stage,revision));
@@ -23,49 +38,687 @@ export class CompanyRepository {
   CREATE INDEX IF NOT EXISTS event_recent ON events(id DESC);
   PRAGMA user_version=1;
   `);
- }
- all<T>(sql:string,...args:unknown[]):T[]{return this.db.prepare(sql).all(...args) as T[]}
- one<T>(sql:string,...args:unknown[]):T|undefined{return this.db.prepare(sql).get(...args) as T|undefined}
- run(sql:string,...args:unknown[]){return this.db.prepare(sql).run(...args)}
- event(message:string,project:string|null=null,agent:string|null=null,kind='info'){this.run('INSERT INTO events(project_id,agent_id,message,kind,created_at) VALUES(?,?,?,?,?)',project,agent,message,kind,now())}
- seed(){
- const roster=[
- ['atlas','Atlas','General Manager','executive','Production planning','Calm, decisive','Delegation and deadlines'],
- ['maya','Maya','Research Analyst','research','Primary-source research','Methodical, curious','Evidence and provenance'],
- ['theo','Theo','Opportunity Analyst','research','Under-covered ideas','Lateral, analytical','Fresh perspectives'],
- ['iris','Iris','Lead Scriptwriter','story','Surprising facts','Precise, cinematic','Structure and payoff'],
- ['leo','Leo','Narrative Architect','story','Human stories','Empathetic, deliberate','Hooks and tension'],
- ['zara','Zara','Curiosity Strategist','story','Shareable curiosity','Playful, truthful','Memorable explanations'],
- ['nova','Nova','Creative Director','creative','Visual storytelling','Bold, considered','Concepts and storyboards'],
- ['elio','Elio','Motion Designer','animation','Explanatory animation','Patient, spatial','Visual clarity'],
- ['kai','Kai','Lead Video Editor','production','Editorial rhythm','Focused, exacting','Pacing and continuity'],
- ['remi','Remi','Narration Director','audio','Voice direction','Attentive, nuanced','Intelligibility'],
- ['cleo','Cleo','Thumbnail Strategist','packaging','Honest visual promises','Concise, perceptive','Clarity and curiosity'],
- ['sage','Sage','Growth Strategist','marketing','Audience discovery','Thoughtful, experimental','Distribution planning'],
- ['arlo','Arlo','Paid Media Manager','advertising','Campaign drafts','Measured, cautious','Budget forecasts'],
- ['ada','Ada','Audience Analyst','analytics','Performance learning','Skeptical, quantitative','Experiment design'],
- ['elena','Elena','Head of Quality & Trust','quality','Fact and rights review','Independent, rigorous','Verification and blockers'],
- ['otto','Otto','Export Engineer','render','Technical QC','Systematic, precise','Master specifications'],
- ];
- this.db.transaction(()=>{for(const [id,name,role,department,specialty,style,strengths] of roster){this.run('INSERT OR IGNORE INTO agents(id,name,role,department,specialty,style,strengths,responsibilities,avatar,status) VALUES(?,?,?,?,?,?,?,?,?,?)',id,name,role,department,specialty,style,strengths,`${role}: produce inspectable artifacts, report blockers and respect Founder gates.`,name.slice(0,2).toUpperCase(),['animation','production','audio','packaging','marketing','advertising','analytics','render'].includes(department)?'OFFLINE':'IDLE')}})();
- if(!this.one('SELECT id FROM projects LIMIT 1')){this.createProject('The space between lightning & thunder','Explain why lightning reaches our eyes before thunder reaches our ears. Create a truthful, visually compelling science story.',true);this.event('Atlas has prepared your studio. Start the demo when you’re ready.',null,'atlas');}
- }
- project(id:string){const p=this.one<Project>('SELECT * FROM projects WHERE id=?',id);if(!p)throw new Error('Project not found');return p}
- createProject(title:string,objective:string,initial=false){const id=randomUUID();this.db.transaction(()=>{this.run('INSERT INTO projects(id,title,objective,status,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?)',id,title,objective,initial?'draft':'queued','research',now(),now());this.plan(id,1);this.event('Atlas prepared a production plan with research, five independent ideas and Founder review.',id,'atlas');}) ();return id}
- plan(id:string,rev:number){let previous:string|null=null;for(const [stage,title,department,agent] of STAGES){const tid=`${id}:${rev}:${stage}`;this.run('INSERT INTO tasks(id,project_id,parent_task_id,department,assigned_agent,stage,title,status,dependencies,created_at,updated_at,founder_approval_required,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',tid,id,previous,department,agent,stage,title,'QUEUED',JSON.stringify(previous?[previous]:[]),now(),now(),stage==='founder'?1:0,rev);previous=tid}}
- artifact(id:string,kind:string,rev:number){return this.one<Artifact>('SELECT * FROM artifacts WHERE project_id=? AND kind=? AND version=?',id,kind,rev)}
- saveArtifact(id:string,kind:string,title:string,body:unknown,rev:number){this.run('INSERT OR IGNORE INTO artifacts(id,project_id,kind,title,body,version,created_at) VALUES(?,?,?,?,?,?,?)',randomUUID(),id,kind,title,JSON.stringify(body),rev,now());return this.artifact(id,kind,rev)!}
- begin(id:string,stage:string,rev:number){return this.db.transaction(()=>{const p=this.project(id);if(['paused','cancelled','rejected'].includes(p.status)||p.revision!==rev)throw new Error('PROJECT_STOPPED');const task=this.one<Task>('SELECT * FROM tasks WHERE project_id=? AND stage=? AND revision=?',id,stage,rev)!;if(task.status==='COMPLETE')return task;const deps=JSON.parse(task.dependencies) as string[];for(const dep of deps){if(this.one<Task>('SELECT * FROM tasks WHERE id=?',dep)?.status!=='COMPLETE')throw new Error('A required department handoff is incomplete');}this.run("UPDATE tasks SET status='WORKING',attempt=attempt+1,started_at=COALESCE(started_at,?),updated_at=?,error=NULL WHERE id=?",now(),now(),task.id);this.run("UPDATE projects SET status='running',stage=?,updated_at=? WHERE id=?",stage,now(),id);this.run("UPDATE agents SET status=?,task_id=? WHERE id=?",['facts','judge','quality'].includes(stage)?'REVIEWING':'WORKING',task.id,task.assigned_agent);this.event(`${this.one<Agent>('SELECT * FROM agents WHERE id=?',task.assigned_agent)!.name} started ${task.title.toLowerCase()}.`,id,task.assigned_agent);return task})()}
- finish(task:Task,artifact:Artifact){this.db.transaction(()=>{const p=this.project(task.project_id);if(['paused','cancelled','rejected'].includes(p.status)||p.revision!==task.revision)throw new Error('PROJECT_STOPPED');this.run("UPDATE tasks SET status='COMPLETE',finished_at=?,updated_at=?,output_artifacts=?,input_artifacts=?,quality_score=100 WHERE id=?",now(),now(),JSON.stringify([artifact.id]),JSON.stringify(this.all<Artifact>('SELECT * FROM artifacts WHERE project_id=? AND version=?',p.id,p.revision).filter(a=>a.id!==artifact.id).map(a=>a.id)),task.id);this.run("UPDATE agents SET status='IDLE',task_id=NULL WHERE id=?",task.assigned_agent);this.event(`${task.title} is ready to inspect.`,task.project_id,task.assigned_agent,'complete')})()}
- requireApproval(id:string,rev:number){return this.db.transaction(()=>{const research=this.artifact(id,'research',rev),facts=this.artifact(id,'facts',rev),jury=this.artifact(id,'judge',rev),qc=this.artifact(id,'quality',rev);if(!research||!facts||!jury||!qc||!JSON.parse(facts.body).passed||!JSON.parse(qc.body).passed)throw new Error('Quality gate blocked: evidence, tournament and quality artifacts must pass');const artifact=this.saveArtifact(id,'review','Founder review package',{scope:'Concept package only; not a rendered video or publication approval',winner:JSON.parse(jury.body).winner,artifacts:this.all<Artifact>('SELECT * FROM artifacts WHERE project_id=? AND version=?',id,rev).map(a=>a.id),knownRisks:['Deterministic sample creative content, not independent model judgments.','No final video, voice, music or licensed visual assets have been produced.'],gate:'IDEA_GATE'},rev);this.run("INSERT OR IGNORE INTO approvals(id,project_id,artifact_id,created_at) VALUES(?,?,?,?)",randomUUID(),id,artifact.id,now());this.run("UPDATE projects SET status='awaiting_approval',stage='founder',updated_at=? WHERE id=?",now(),id);this.run("UPDATE tasks SET status='WAITING',updated_at=? WHERE project_id=? AND stage='founder' AND revision=?",now(),id,rev);this.run("UPDATE agents SET status='WAITING',task_id=? WHERE id='atlas'",`${id}:${rev}:founder`);this.event('Your concept package is ready. Atlas is waiting for your decision.',id,'atlas','approval');return artifact})()}
- decide(approvalId:string,decision:string,feedback:string){this.db.transaction(()=>{const a=this.one<Approval>('SELECT * FROM approvals WHERE id=?',approvalId);if(!a||a.status!=='pending')throw new Error('This approval is no longer pending');const p=this.project(a.project_id);if(p.status!=='awaiting_approval')throw new Error('Project must be awaiting Founder review');if(decision!=='approve'&&!feedback.trim())throw new Error('Add feedback so the team knows what to change');const review=this.one<Artifact>('SELECT * FROM artifacts WHERE id=?',a.artifact_id)!;if(review.version!==p.revision)throw new Error('This package is outdated');const qc=this.artifact(p.id,'quality',p.revision);if(!qc||!JSON.parse(qc.body).passed)throw new Error('Quality gate has not passed');this.run('UPDATE approvals SET status=?,feedback=?,decided_at=? WHERE id=?',decision,feedback,now(),a.id);this.run('INSERT INTO memory(project_id,category,body,created_at) VALUES(?,?,?,?)',p.id,'Founder feedback',`${decision}: ${feedback||'Concept approved'}`,now());if(decision==='approve'){this.run('UPDATE artifacts SET approved=1 WHERE id=?',a.artifact_id);this.run("UPDATE projects SET status='approved',updated_at=? WHERE id=?",now(),p.id)}else if(decision==='revise'){const rev=p.revision+1;this.run("UPDATE projects SET status='queued',revision=?,stage='research',error=NULL,updated_at=? WHERE id=?",rev,now(),p.id);this.plan(p.id,rev)}else{this.run("UPDATE projects SET status='rejected',updated_at=? WHERE id=?",now(),p.id);this.run("UPDATE tasks SET status='CANCELLED',updated_at=? WHERE project_id=? AND status!='COMPLETE'",now(),p.id)}this.run("UPDATE agents SET status='IDLE',task_id=NULL WHERE task_id IN (SELECT id FROM tasks WHERE project_id=?)",p.id);this.event(`Founder ${decision==='approve'?'approved the concept':decision==='revise'?'requested a new revision':'rejected the concept'}.`,p.id,null,'decision')})()}
- control(id:string,action:string){this.db.transaction(()=>{const p=this.project(id);if(action==='prioritize'){this.run('UPDATE projects SET priority=priority+1,updated_at=? WHERE id=?',now(),id);this.run('UPDATE tasks SET priority=priority+1 WHERE project_id=?',id)}else if(action==='start'||action==='resume'){if(!['draft','paused','failed'].includes(p.status))throw new Error('This project cannot be started from its current state');if(p.status==='failed')this.run("UPDATE tasks SET attempt=0,status='QUEUED',error=NULL WHERE project_id=? AND status='FAILED'",id);this.run("UPDATE projects SET status='queued',error=NULL,updated_at=? WHERE id=?",now(),id)}else if(action==='pause'){if(!['queued','running'].includes(p.status))throw new Error('Only queued or running work can be paused');this.run("UPDATE projects SET status='paused',updated_at=? WHERE id=?",now(),id);this.run("UPDATE tasks SET status='WAITING',updated_at=? WHERE project_id=? AND status='WORKING'",now(),id)}else if(action==='cancel'){if(['complete','cancelled','rejected'].includes(p.status))throw new Error('Project is already closed');this.run("UPDATE projects SET status='cancelled',updated_at=? WHERE id=?",now(),id);this.run("UPDATE tasks SET status='CANCELLED',updated_at=? WHERE project_id=? AND status!='COMPLETE'",now(),id);this.run("UPDATE approvals SET status='cancelled',decided_at=? WHERE project_id=? AND status='pending'",now(),id)}else throw new Error('Unknown action');if(['pause','cancel'].includes(action))this.run("UPDATE agents SET status='IDLE',task_id=NULL WHERE task_id IN (SELECT id FROM tasks WHERE project_id=?)",id);this.event(`Founder ${action==='start'?'started the production':action+'d the project'}.`,id,null,'decision')})()}
- acquire(owner:string,ttl=15000){return this.db.transaction(()=>{const lease=this.one<{owner:string;expires:number}>('SELECT * FROM worker_lease WHERE id=1');if(lease&&lease.owner!==owner&&lease.expires>Date.now())return false;this.run('INSERT INTO worker_lease(id,owner,expires,updated_at) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires,updated_at=excluded.updated_at',owner,Date.now()+ttl,now());return true})()}
- release(owner:string){this.run('DELETE FROM worker_lease WHERE id=1 AND owner=?',owner)}
- next(){return this.one<Project>("SELECT * FROM projects WHERE status IN ('queued','running','approved') ORDER BY priority DESC,created_at LIMIT 1")}
- message(agent:string,role:string,body:string,project:string|null=null){this.run('INSERT INTO messages(agent_id,project_id,role,body,created_at) VALUES(?,?,?,?,?)',agent,project,role,body,now())}
- snapshot():Snapshot {const w=this.one<{expires:number;updated_at:string}>('SELECT * FROM worker_lease WHERE id=1');return {projects:this.all<Project>('SELECT * FROM projects ORDER BY priority DESC,created_at DESC'),agents:this.all<Agent>('SELECT * FROM agents'),tasks:this.all<Task>('SELECT * FROM tasks ORDER BY created_at,id'),artifacts:this.all<Artifact>('SELECT * FROM artifacts ORDER BY created_at DESC'),approvals:this.all<Approval>('SELECT * FROM approvals ORDER BY created_at DESC'),events:this.all<CompanyEvent>('SELECT * FROM events ORDER BY id DESC LIMIT 80'),messages:this.all<Message>('SELECT * FROM messages ORDER BY id DESC LIMIT 300').reverse(),memory:this.all<Memory>('SELECT * FROM memory ORDER BY id DESC LIMIT 100'),worker:{alive:!!w&&w.expires>Date.now(),updated_at:w?.updated_at||null},mode:process.env.TEXT_PROVIDER==='ollama'?'Local model chat · demo production':'Demo studio · no paid APIs'}}
- close(){this.db.close()}
+  }
+  all<T>(sql: string, ...args: unknown[]): T[] {
+    return this.db.prepare(sql).all(...args) as T[];
+  }
+  one<T>(sql: string, ...args: unknown[]): T | undefined {
+    return this.db.prepare(sql).get(...args) as T | undefined;
+  }
+  run(sql: string, ...args: unknown[]) {
+    return this.db.prepare(sql).run(...args);
+  }
+  event(
+    message: string,
+    project: string | null = null,
+    agent: string | null = null,
+    kind = "info",
+  ) {
+    this.run(
+      "INSERT INTO events(project_id,agent_id,message,kind,created_at) VALUES(?,?,?,?,?)",
+      project,
+      agent,
+      message,
+      kind,
+      now(),
+    );
+  }
+  seed() {
+    const roster = [
+      [
+        "atlas",
+        "Atlas",
+        "General Manager",
+        "executive",
+        "Production planning",
+        "Calm, decisive",
+        "Delegation and deadlines",
+      ],
+      [
+        "maya",
+        "Maya",
+        "Research Analyst",
+        "research",
+        "Primary-source research",
+        "Methodical, curious",
+        "Evidence and provenance",
+      ],
+      [
+        "theo",
+        "Theo",
+        "Opportunity Analyst",
+        "research",
+        "Under-covered ideas",
+        "Lateral, analytical",
+        "Fresh perspectives",
+      ],
+      [
+        "iris",
+        "Iris",
+        "Lead Scriptwriter",
+        "story",
+        "Surprising facts",
+        "Precise, cinematic",
+        "Structure and payoff",
+      ],
+      [
+        "leo",
+        "Leo",
+        "Narrative Architect",
+        "story",
+        "Human stories",
+        "Empathetic, deliberate",
+        "Hooks and tension",
+      ],
+      [
+        "zara",
+        "Zara",
+        "Curiosity Strategist",
+        "story",
+        "Shareable curiosity",
+        "Playful, truthful",
+        "Memorable explanations",
+      ],
+      [
+        "nova",
+        "Nova",
+        "Creative Director",
+        "creative",
+        "Visual storytelling",
+        "Bold, considered",
+        "Concepts and storyboards",
+      ],
+      [
+        "elio",
+        "Elio",
+        "Motion Designer",
+        "animation",
+        "Explanatory animation",
+        "Patient, spatial",
+        "Visual clarity",
+      ],
+      [
+        "kai",
+        "Kai",
+        "Lead Video Editor",
+        "production",
+        "Editorial rhythm",
+        "Focused, exacting",
+        "Pacing and continuity",
+      ],
+      [
+        "remi",
+        "Remi",
+        "Narration Director",
+        "audio",
+        "Voice direction",
+        "Attentive, nuanced",
+        "Intelligibility",
+      ],
+      [
+        "cleo",
+        "Cleo",
+        "Thumbnail Strategist",
+        "packaging",
+        "Honest visual promises",
+        "Concise, perceptive",
+        "Clarity and curiosity",
+      ],
+      [
+        "sage",
+        "Sage",
+        "Growth Strategist",
+        "marketing",
+        "Audience discovery",
+        "Thoughtful, experimental",
+        "Distribution planning",
+      ],
+      [
+        "arlo",
+        "Arlo",
+        "Paid Media Manager",
+        "advertising",
+        "Campaign drafts",
+        "Measured, cautious",
+        "Budget forecasts",
+      ],
+      [
+        "ada",
+        "Ada",
+        "Audience Analyst",
+        "analytics",
+        "Performance learning",
+        "Skeptical, quantitative",
+        "Experiment design",
+      ],
+      [
+        "elena",
+        "Elena",
+        "Head of Quality & Trust",
+        "quality",
+        "Fact and rights review",
+        "Independent, rigorous",
+        "Verification and blockers",
+      ],
+      [
+        "otto",
+        "Otto",
+        "Export Engineer",
+        "render",
+        "Technical QC",
+        "Systematic, precise",
+        "Master specifications",
+      ],
+    ];
+    this.db.transaction(() => {
+      for (const [
+        id,
+        name,
+        role,
+        department,
+        specialty,
+        style,
+        strengths,
+      ] of roster) {
+        this.run(
+          "INSERT OR IGNORE INTO agents(id,name,role,department,specialty,style,strengths,responsibilities,avatar,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
+          id,
+          name,
+          role,
+          department,
+          specialty,
+          style,
+          strengths,
+          `${role}: produce inspectable artifacts, report blockers and respect Founder gates.`,
+          name.slice(0, 2).toUpperCase(),
+          [
+            "animation",
+            "production",
+            "audio",
+            "packaging",
+            "marketing",
+            "advertising",
+            "analytics",
+            "render",
+          ].includes(department)
+            ? "OFFLINE"
+            : "IDLE",
+        );
+      }
+    })();
+    if (!this.one("SELECT id FROM projects LIMIT 1")) {
+      this.createProject(
+        "The space between lightning & thunder",
+        "Explain why lightning reaches our eyes before thunder reaches our ears. Create a truthful, visually compelling science story.",
+        true,
+      );
+      this.event(
+        "Atlas has prepared your studio. Start the demo when you’re ready.",
+        null,
+        "atlas",
+      );
+    }
+  }
+  project(id: string) {
+    const p = this.one<Project>("SELECT * FROM projects WHERE id=?", id);
+    if (!p) throw new Error("Project not found");
+    return p;
+  }
+  createProject(title: string, objective: string, initial = false) {
+    const id = randomUUID();
+    this.db.transaction(() => {
+      this.run(
+        "INSERT INTO projects(id,title,objective,status,stage,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+        id,
+        title,
+        objective,
+        initial ? "draft" : "queued",
+        "research",
+        now(),
+        now(),
+      );
+      this.plan(id, 1);
+      this.event(
+        "Atlas prepared a production plan with research, five independent ideas and Founder review.",
+        id,
+        "atlas",
+      );
+    })();
+    return id;
+  }
+  plan(id: string, rev: number) {
+    let previous: string | null = null;
+    for (const [stage, title, department, agent] of STAGES) {
+      const tid = `${id}:${rev}:${stage}`;
+      this.run(
+        "INSERT INTO tasks(id,project_id,parent_task_id,department,assigned_agent,stage,title,status,dependencies,created_at,updated_at,founder_approval_required,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        tid,
+        id,
+        previous,
+        department,
+        agent,
+        stage,
+        title,
+        "QUEUED",
+        JSON.stringify(previous ? [previous] : []),
+        now(),
+        now(),
+        stage === "founder" ? 1 : 0,
+        rev,
+      );
+      previous = tid;
+    }
+  }
+  artifact(id: string, kind: string, rev: number) {
+    return this.one<Artifact>(
+      "SELECT * FROM artifacts WHERE project_id=? AND kind=? AND version=?",
+      id,
+      kind,
+      rev,
+    );
+  }
+  saveArtifact(
+    id: string,
+    kind: string,
+    title: string,
+    body: unknown,
+    rev: number,
+  ) {
+    this.run(
+      "INSERT OR IGNORE INTO artifacts(id,project_id,kind,title,body,version,created_at) VALUES(?,?,?,?,?,?,?)",
+      randomUUID(),
+      id,
+      kind,
+      title,
+      JSON.stringify(body),
+      rev,
+      now(),
+    );
+    return this.artifact(id, kind, rev)!;
+  }
+  begin(id: string, stage: string, rev: number) {
+    return this.db.transaction(() => {
+      const p = this.project(id);
+      if (
+        ["paused", "cancelled", "rejected"].includes(p.status) ||
+        p.revision !== rev
+      )
+        throw new Error("PROJECT_STOPPED");
+      const task = this.one<Task>(
+        "SELECT * FROM tasks WHERE project_id=? AND stage=? AND revision=?",
+        id,
+        stage,
+        rev,
+      )!;
+      if (task.status === "COMPLETE") return task;
+      const deps = JSON.parse(task.dependencies) as string[];
+      for (const dep of deps) {
+        if (
+          this.one<Task>("SELECT * FROM tasks WHERE id=?", dep)?.status !==
+          "COMPLETE"
+        )
+          throw new Error("A required department handoff is incomplete");
+      }
+      this.run(
+        "UPDATE tasks SET status='WORKING',attempt=attempt+1,started_at=COALESCE(started_at,?),updated_at=?,error=NULL WHERE id=?",
+        now(),
+        now(),
+        task.id,
+      );
+      this.run(
+        "UPDATE projects SET status='running',stage=?,updated_at=? WHERE id=?",
+        stage,
+        now(),
+        id,
+      );
+      this.run(
+        "UPDATE agents SET status=?,task_id=? WHERE id=?",
+        ["facts", "judge", "quality"].includes(stage) ? "REVIEWING" : "WORKING",
+        task.id,
+        task.assigned_agent,
+      );
+      this.event(
+        `${this.one<Agent>("SELECT * FROM agents WHERE id=?", task.assigned_agent)!.name} started ${task.title.toLowerCase()}.`,
+        id,
+        task.assigned_agent,
+      );
+      return task;
+    })();
+  }
+  finish(task: Task, artifact: Artifact) {
+    this.db.transaction(() => {
+      const p = this.project(task.project_id);
+      if (
+        ["paused", "cancelled", "rejected"].includes(p.status) ||
+        p.revision !== task.revision
+      )
+        throw new Error("PROJECT_STOPPED");
+      this.run(
+        "UPDATE tasks SET status='COMPLETE',finished_at=?,updated_at=?,output_artifacts=?,input_artifacts=?,quality_score=100 WHERE id=?",
+        now(),
+        now(),
+        JSON.stringify([artifact.id]),
+        JSON.stringify(
+          this.all<Artifact>(
+            "SELECT * FROM artifacts WHERE project_id=? AND version=?",
+            p.id,
+            p.revision,
+          )
+            .filter((a) => a.id !== artifact.id)
+            .map((a) => a.id),
+        ),
+        task.id,
+      );
+      this.run(
+        "UPDATE agents SET status='IDLE',task_id=NULL WHERE id=?",
+        task.assigned_agent,
+      );
+      this.event(
+        `${task.title} is ready to inspect.`,
+        task.project_id,
+        task.assigned_agent,
+        "complete",
+      );
+    })();
+  }
+  requireApproval(id: string, rev: number) {
+    return this.db.transaction(() => {
+      const research = this.artifact(id, "research", rev),
+        facts = this.artifact(id, "facts", rev),
+        jury = this.artifact(id, "judge", rev),
+        qc = this.artifact(id, "quality", rev);
+      if (
+        !research ||
+        !facts ||
+        !jury ||
+        !qc ||
+        !JSON.parse(facts.body).passed ||
+        !JSON.parse(qc.body).passed
+      )
+        throw new Error(
+          "Quality gate blocked: evidence, tournament and quality artifacts must pass",
+        );
+      const artifact = this.saveArtifact(
+        id,
+        "review",
+        "Founder review package",
+        {
+          scope:
+            "Concept package only; not a rendered video or publication approval",
+          winner: JSON.parse(jury.body).winner,
+          artifacts: this.all<Artifact>(
+            "SELECT * FROM artifacts WHERE project_id=? AND version=?",
+            id,
+            rev,
+          ).map((a) => a.id),
+          knownRisks: [
+            "Deterministic sample creative content, not independent model judgments.",
+            "No final video, voice, music or licensed visual assets have been produced.",
+          ],
+          gate: "IDEA_GATE",
+        },
+        rev,
+      );
+      this.run(
+        "INSERT OR IGNORE INTO approvals(id,project_id,artifact_id,created_at) VALUES(?,?,?,?)",
+        randomUUID(),
+        id,
+        artifact.id,
+        now(),
+      );
+      this.run(
+        "UPDATE projects SET status='awaiting_approval',stage='founder',updated_at=? WHERE id=?",
+        now(),
+        id,
+      );
+      this.run(
+        "UPDATE tasks SET status='WAITING',updated_at=? WHERE project_id=? AND stage='founder' AND revision=?",
+        now(),
+        id,
+        rev,
+      );
+      this.run(
+        "UPDATE agents SET status='WAITING',task_id=? WHERE id='atlas'",
+        `${id}:${rev}:founder`,
+      );
+      this.event(
+        "Your concept package is ready. Atlas is waiting for your decision.",
+        id,
+        "atlas",
+        "approval",
+      );
+      return artifact;
+    })();
+  }
+  decide(approvalId: string, decision: string, feedback: string) {
+    this.db.transaction(() => {
+      const a = this.one<Approval>(
+        "SELECT * FROM approvals WHERE id=?",
+        approvalId,
+      );
+      if (!a || a.status !== "pending")
+        throw new Error("This approval is no longer pending");
+      const p = this.project(a.project_id);
+      if (p.status !== "awaiting_approval")
+        throw new Error("Project must be awaiting Founder review");
+      if (decision !== "approve" && !feedback.trim())
+        throw new Error("Add feedback so the team knows what to change");
+      const review = this.one<Artifact>(
+        "SELECT * FROM artifacts WHERE id=?",
+        a.artifact_id,
+      )!;
+      if (review.version !== p.revision)
+        throw new Error("This package is outdated");
+      const qc = this.artifact(p.id, "quality", p.revision);
+      if (!qc || !JSON.parse(qc.body).passed)
+        throw new Error("Quality gate has not passed");
+      this.run(
+        "UPDATE approvals SET status=?,feedback=?,decided_at=? WHERE id=?",
+        decision,
+        feedback,
+        now(),
+        a.id,
+      );
+      this.run(
+        "INSERT INTO memory(project_id,category,body,created_at) VALUES(?,?,?,?)",
+        p.id,
+        "Founder feedback",
+        `${decision}: ${feedback || "Concept approved"}`,
+        now(),
+      );
+      if (decision === "approve") {
+        this.run("UPDATE artifacts SET approved=1 WHERE id=?", a.artifact_id);
+        this.run(
+          "UPDATE projects SET status='approved',updated_at=? WHERE id=?",
+          now(),
+          p.id,
+        );
+      } else if (decision === "revise") {
+        const rev = p.revision + 1;
+        this.run(
+          "UPDATE projects SET status='queued',revision=?,stage='research',error=NULL,updated_at=? WHERE id=?",
+          rev,
+          now(),
+          p.id,
+        );
+        this.plan(p.id, rev);
+      } else {
+        this.run(
+          "UPDATE projects SET status='rejected',updated_at=? WHERE id=?",
+          now(),
+          p.id,
+        );
+        this.run(
+          "UPDATE tasks SET status='CANCELLED',updated_at=? WHERE project_id=? AND status!='COMPLETE'",
+          now(),
+          p.id,
+        );
+      }
+      this.run(
+        "UPDATE agents SET status='IDLE',task_id=NULL WHERE task_id IN (SELECT id FROM tasks WHERE project_id=?)",
+        p.id,
+      );
+      this.event(
+        `Founder ${decision === "approve" ? "approved the concept" : decision === "revise" ? "requested a new revision" : "rejected the concept"}.`,
+        p.id,
+        null,
+        "decision",
+      );
+    })();
+  }
+  control(id: string, action: string) {
+    this.db.transaction(() => {
+      const p = this.project(id);
+      if (action === "prioritize") {
+        this.run(
+          "UPDATE projects SET priority=priority+1,updated_at=? WHERE id=?",
+          now(),
+          id,
+        );
+        this.run("UPDATE tasks SET priority=priority+1 WHERE project_id=?", id);
+      } else if (action === "start" || action === "resume") {
+        if (!["draft", "paused", "failed"].includes(p.status))
+          throw new Error(
+            "This project cannot be started from its current state",
+          );
+        if (p.status === "failed")
+          this.run(
+            "UPDATE tasks SET attempt=0,status='QUEUED',error=NULL WHERE project_id=? AND status='FAILED'",
+            id,
+          );
+        this.run(
+          "UPDATE projects SET status='queued',error=NULL,updated_at=? WHERE id=?",
+          now(),
+          id,
+        );
+      } else if (action === "pause") {
+        if (!["queued", "running"].includes(p.status))
+          throw new Error("Only queued or running work can be paused");
+        this.run(
+          "UPDATE projects SET status='paused',updated_at=? WHERE id=?",
+          now(),
+          id,
+        );
+        this.run(
+          "UPDATE tasks SET status='WAITING',updated_at=? WHERE project_id=? AND status='WORKING'",
+          now(),
+          id,
+        );
+      } else if (action === "cancel") {
+        if (["complete", "cancelled", "rejected"].includes(p.status))
+          throw new Error("Project is already closed");
+        this.run(
+          "UPDATE projects SET status='cancelled',updated_at=? WHERE id=?",
+          now(),
+          id,
+        );
+        this.run(
+          "UPDATE tasks SET status='CANCELLED',updated_at=? WHERE project_id=? AND status!='COMPLETE'",
+          now(),
+          id,
+        );
+        this.run(
+          "UPDATE approvals SET status='cancelled',decided_at=? WHERE project_id=? AND status='pending'",
+          now(),
+          id,
+        );
+      } else throw new Error("Unknown action");
+      if (["pause", "cancel"].includes(action))
+        this.run(
+          "UPDATE agents SET status='IDLE',task_id=NULL WHERE task_id IN (SELECT id FROM tasks WHERE project_id=?)",
+          id,
+        );
+      this.event(
+        `Founder ${action === "start" ? "started the production" : action + "d the project"}.`,
+        id,
+        null,
+        "decision",
+      );
+    })();
+  }
+  acquire(owner: string, ttl = 15000) {
+    return this.db.transaction(() => {
+      const lease = this.one<{ owner: string; expires: number }>(
+        "SELECT * FROM worker_lease WHERE id=1",
+      );
+      if (lease && lease.owner !== owner && lease.expires > Date.now())
+        return false;
+      this.run(
+        "INSERT INTO worker_lease(id,owner,expires,updated_at) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET owner=excluded.owner,expires=excluded.expires,updated_at=excluded.updated_at",
+        owner,
+        Date.now() + ttl,
+        now(),
+      );
+      return true;
+    })();
+  }
+  release(owner: string) {
+    this.run("DELETE FROM worker_lease WHERE id=1 AND owner=?", owner);
+  }
+  next() {
+    return this.one<Project>(
+      "SELECT * FROM projects WHERE status IN ('queued','running','approved') ORDER BY priority DESC,created_at LIMIT 1",
+    );
+  }
+  message(
+    agent: string,
+    role: string,
+    body: string,
+    project: string | null = null,
+  ) {
+    this.run(
+      "INSERT INTO messages(agent_id,project_id,role,body,created_at) VALUES(?,?,?,?,?)",
+      agent,
+      project,
+      role,
+      body,
+      now(),
+    );
+  }
+  snapshot(): Snapshot {
+    const w = this.one<{ expires: number; updated_at: string }>(
+      "SELECT * FROM worker_lease WHERE id=1",
+    );
+    return {
+      projects: this.all<Project>(
+        "SELECT * FROM projects ORDER BY priority DESC,created_at DESC",
+      ),
+      agents: this.all<Agent>("SELECT * FROM agents"),
+      tasks: this.all<Task>("SELECT * FROM tasks ORDER BY created_at,id"),
+      artifacts: this.all<Artifact>(
+        "SELECT * FROM artifacts ORDER BY created_at DESC",
+      ),
+      approvals: this.all<Approval>(
+        "SELECT * FROM approvals ORDER BY created_at DESC",
+      ),
+      events: this.all<CompanyEvent>(
+        "SELECT * FROM events ORDER BY id DESC LIMIT 80",
+      ),
+      messages: this.all<Message>(
+        "SELECT * FROM messages ORDER BY id DESC LIMIT 300",
+      ).reverse(),
+      memory: this.all<Memory>(
+        "SELECT * FROM memory ORDER BY id DESC LIMIT 100",
+      ),
+      worker: {
+        alive: !!w && w.expires > Date.now(),
+        updated_at: w?.updated_at || null,
+      },
+      mode:
+        process.env.TEXT_PROVIDER === "ollama"
+          ? "Local model chat · demo production"
+          : "Demo studio · no paid APIs",
+    };
+  }
+  close() {
+    this.db.close();
+  }
 }
-let repository:CompanyRepository|undefined;
-export function getRepository(){if(!repository){repository=new CompanyRepository();repository.seed()}return repository}
+let repository: CompanyRepository | undefined;
+export function getRepository() {
+  if (!repository) {
+    repository = new CompanyRepository();
+    repository.seed();
+  }
+  return repository;
+}

@@ -1,2 +1,19 @@
-import {defineConfig} from '@playwright/test';
-export default defineConfig({testDir:'./tests/browser',fullyParallel:false,workers:1,timeout:60000,use:{baseURL:'http://127.0.0.1:3001',headless:true,viewport:{width:1440,height:1000},trace:'retain-on-failure'},globalSetup:'./tests/browser/setup.ts',webServer:[{command:'npm run dev -- --port 3001',url:'http://127.0.0.1:3001/api/session',reuseExistingServer:false,env:{DATABASE_PATH:'./data/e2e-company.sqlite',CHECKPOINT_PATH:'./data/e2e-checkpoints.sqlite',FOUNDER_PASSWORD:'',SESSION_SECRET:''}},{command:'npm run worker',wait:{stdout:/Company worker started/},reuseExistingServer:false,env:{DATABASE_PATH:'./data/e2e-company.sqlite',CHECKPOINT_PATH:'./data/e2e-checkpoints.sqlite',WORKER_STEP_MS:'100',FOUNDER_PASSWORD:''}}]});
+import { defineConfig } from "@playwright/test";
+export default defineConfig({
+  testDir: "./tests/browser",
+  fullyParallel: false,
+  workers: 1,
+  timeout: 60000,
+  use: {
+    baseURL: "http://127.0.0.1:3001",
+    headless: true,
+    viewport: { width: 1440, height: 1000 },
+    trace: "retain-on-failure",
+  },
+  webServer: {
+    command: "node scripts/e2e-server.mjs",
+    url: "http://127.0.0.1:3001/api/session",
+    reuseExistingServer: false,
+    timeout: 30000,
+  },
+});
