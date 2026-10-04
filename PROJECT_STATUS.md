@@ -1,17 +1,31 @@
 # Project status
 
+Updated: 2026-10-04. Scope: Phase 0 and the first vertical slice, not the entire autonomous studio.
+
 ## Completed
-- Phase 0: reviewed the fourteen requested repositories and upstream licenses.
-- Standalone repository scaffold and architecture decisions.
+- New public repository, main/develop/feature branches and pushed milestone commits.
+- Fourteen requested repository READMEs and root licenses inspected; architecture and notices documented.
+- SQLite company repository: 16 named AI roles, 13 tasks per production, versioned artifacts, conversations, approvals, events, memory and worker lease.
+- LangGraph with on-disk SQLite checkpoints, blind idea submissions, rubric judging, source traceability, hooks, concept scripts, storyboard, review and Founder interrupt.
+- Twelve passing automated tests for persistence, gate enforcement, replay, revisions, pause/resume, cancellation, retries, blind entries and request security.
+- Next.js production build and TypeScript check pass.
 
 ## In progress
-- First vertical slice: office, persistence, queue, LangGraph, chat, tournaments, approvals.
+- Browser verification and visual QA of the office, mobile controls, conversations and review flow.
+- README, screenshots, launch instructions and release documentation.
 
 ## Blocked
-- None for local demo development.
+- Nothing blocks the demo slice. Arbitrary-topic research and real creative generation intentionally require later provider work.
 
 ## Next
-- Implement and test first vertical slice, then push meaningful milestones.
+- Finish browser testing, publish dashboard milestone, verify GitHub CI and final branch state.
 
 ## Founder decisions required
-- None. Future production provider/account connections need separate approval.
+- Review the sample concept package when ready. No paid providers or external accounts are needed for this demo.
+
+## Honest boundaries
+- Research uses a developer-verified NWS source fixture; no autonomous browsing or ongoing verification.
+- Creative entries, judges, hooks and scripts are deterministic examples. Optional Ollama chat exists, but no local model has been configured or validated in this environment.
+- Eight production/growth specialists are visible as planned and offline.
+- No rendered video, captions, voice, images, paid advertising, analytics connection or publishing pipeline yet.
+- Default local Founder access; optional passphrase shell. Not for public deployment or multi-user hosting.
