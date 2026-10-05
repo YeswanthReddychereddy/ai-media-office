@@ -9,10 +9,13 @@ Updated: 2026-10-04. Scope: Phase 0 and the first vertical slice, not the entire
 - LangGraph with on-disk SQLite checkpoints, blind idea submissions, rubric judging, source traceability, hooks, concept scripts, storyboard, review and Founder interrupt.
 - Twelve passing automated tests for persistence, gate enforcement, replay, revisions, pause/resume, cancellation, retries, blind entries and request security.
 - Next.js production build and TypeScript check pass.
+- GitHub CI passed all 12 engine/security tests and 3 browser/API tests. Desktop/mobile screenshots saved.
+- Local in-app browser verified chat, evidence, five entries, mobile Founder controls, and refresh persistence.
+- Demo currently awaits the Founder’s decision; nothing published.
 
 ## In progress
-- Browser verification and visual QA of the office, mobile controls, conversations and review flow.
-- README, screenshots, launch instructions and release documentation.
+- Desktop app bundle, login startup, and independent local-model execution (new Founder request).
+- Desktop installation and recovery tests.
 
 ## Blocked
 - Nothing blocks the demo slice. Arbitrary-topic research and real creative generation intentionally require later provider work.
