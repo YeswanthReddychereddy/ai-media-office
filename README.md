@@ -1,5 +1,8 @@
 # AI Media Office
 
+**Desktop edition:** [Setup, background operation and saved-queue policy](desktop/README.md). The installed app runs independently of Codex. Astra and video generation are not yet connected. No automatic paid fallback.
+
+
 A local-first AI media company you can see, direct, and review. A digital office connects a real background queue to named AI employees, versioned work, and Founder decisions.
 
 ![Digital office](docs/screenshots/office-desktop.png)

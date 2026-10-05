@@ -12,3 +12,6 @@ test-results/
 *.key
 .DS_Store
 *.tsbuildinfo
+
+__pycache__/
+*.pyc

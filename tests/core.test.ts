@@ -11,6 +11,7 @@ import {
   productionOutput,
   CRITERIA,
 } from "../src/lib/providers";
+import { ProviderLimitError } from "../src/lib/provider-limit";
 import { Command } from "@langchain/langgraph";
 import {
   checkOrigin,
@@ -336,5 +337,54 @@ test("loopback, CSRF, expiring signed sessions and password comparison", () => {
     else process.env.SESSION_SECRET = previous;
     if (oldPassword === undefined) delete process.env.FOUNDER_PASSWORD;
     else process.env.FOUNDER_PASSWORD = oldPassword;
+  }
+});
+
+test("usage limits hold persisted work without automatic retries or a paid fallback", async () => {
+  const f = fixture();
+  f.flow.saver.db.close();
+  let calls = 0;
+  let limited = true;
+  const generate = async (...args: Parameters<typeof productionOutput>) => {
+    calls++;
+    if (args[0] === "idea-b" && limited) throw new ProviderLimitError();
+    return productionOutput(...args);
+  };
+  let flow = createWorkflow(f.repo, f.checkpoint, 0, generate);
+  try {
+    const p = f.repo.snapshot().projects[0];
+    f.repo.control(p.id, "start");
+    await processNext(f.repo, flow);
+    assert.equal(f.repo.project(p.id).status, "paused");
+    assert.match(f.repo.project(p.id).error!, /No paid fallback/);
+    assert.equal(
+      f.repo.snapshot().tasks.find((t) => t.stage === "idea-b")?.status,
+      "WAITING",
+    );
+    assert.equal(
+      f.repo.snapshot().tasks.find((t) => t.stage === "idea-b")?.attempt,
+      0,
+    );
+    const before = calls;
+    const artifacts = f.repo.snapshot().artifacts;
+    assert.equal(artifacts.length, 3);
+    for (let i = 0; i < 4; i++)
+      assert.equal(await processNext(f.repo, flow), false);
+    assert.equal(calls, before);
+    flow.saver.db.close();
+    const reopened = new CompanyRepository(f.db);
+    flow = createWorkflow(reopened, f.checkpoint, 0, generate);
+    assert.equal(await processNext(reopened, flow), false);
+    limited = false;
+    reopened.control(p.id, "resume");
+    await processNext(reopened, flow);
+    assert.equal(reopened.project(p.id).status, "awaiting_approval");
+    for (const a of artifacts)
+      assert.equal(reopened.artifact(p.id, a.kind, 1)?.id, a.id);
+    reopened.close();
+  } finally {
+    flow.saver.db.close();
+    f.repo.close();
+    rmSync(f.dir, { recursive: true, force: true });
   }
 });

@@ -12,6 +12,8 @@ import { dirname, resolve } from "node:path";
 import { CompanyRepository, now } from "./db";
 import { STAGES, type Task, type Artifact } from "./types";
 import { productionOutput } from "./providers";
+import { localProduction } from "./local-production";
+import { ProviderLimitError } from "./provider-limit";
 const State = Annotation.Root({
   projectId: Annotation<string>(),
   revision: Annotation<number>(),
@@ -21,6 +23,10 @@ export function createWorkflow(
   repo: CompanyRepository,
   checkpointPath = process.env.CHECKPOINT_PATH || "./data/checkpoints.sqlite",
   delay = Number(process.env.WORKER_STEP_MS ?? 2200),
+  generate: typeof localProduction = async (...args) =>
+    process.env.PRODUCTION_PROVIDER === "ollama"
+      ? localProduction(...args)
+      : productionOutput(...args),
 ) {
   if (checkpointPath !== ":memory:")
     mkdirSync(dirname(resolve(checkpointPath)), { recursive: true });
@@ -104,7 +110,7 @@ export function createWorkflow(
           "Founder feedback",
         )
         .map((m) => m.body);
-      const output = productionOutput(stage, p, inputs, feedback);
+      const output = await generate(stage, p, inputs, feedback);
       repo.db.transaction(() => {
         const a = repo.saveArtifact(p.id, stage, title, output, p.revision);
         repo.finish(task, a);
@@ -159,6 +165,33 @@ export async function processNext(
         p.id,
         p.revision,
       );
+      if (err instanceof ProviderLimitError) {
+        repo.run(
+          "UPDATE projects SET status='paused',error=?,updated_at=? WHERE id=?",
+          message,
+          now(),
+          p.id,
+        );
+        if (task) {
+          repo.run(
+            "UPDATE tasks SET status='WAITING',attempt=MAX(0,attempt-1),error=?,updated_at=? WHERE id=?",
+            message,
+            now(),
+            task.id,
+          );
+          repo.run(
+            "UPDATE agents SET status='WAITING' WHERE id=?",
+            task.assigned_agent,
+          );
+        }
+        repo.event(
+          message,
+          p.id,
+          task?.assigned_agent || "atlas",
+          "usage-limit",
+        );
+        return;
+      }
       const failed =
         !task || task.attempt >= 3 || message.startsWith("Research is blocked");
       repo.run(
