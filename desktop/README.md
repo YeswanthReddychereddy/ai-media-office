@@ -28,8 +28,19 @@ Then run `install.py --source <repo> --node <Node-22-bin/node> --bundle <AI Medi
 
 No sudo. Installation requires write access to those destinations. Existing private databases are preserved; an initial install copies the current demo via SQLite backup. Versioned releases and previous app bundles are retained on upgrades. `--stage-only --support <temporary-support> --desktop <temporary-desktop> --agents <temporary-agents>` prepares an installation without registering it.
 
+Run `node scripts/verify-desktop.mjs <staged-support>` with Node 22 after staging to verify startup and forced-crash recovery. This check must use disposable staged data, never your live installation.
+
 The supervisor restarts crashed web/worker processes, keeps separate logs, and rotates child logs on restart above 5 MB. Credentials, if later configured, belong in private Application Support settings and never in Git. The app is locally built and unsigned; it is not a notarized distribution package.
 
 ## Stopping or uninstalling
 
 Use the app's Stop Background Company menu. To disable login startup, move its LaunchAgent plist out of `~/Library/LaunchAgents` after stopping it. Removing the Desktop app alone does not stop the service. Keep or back up Application Support data before removing the installation; that folder contains your work.
+
+## Verified service behavior
+
+The installed LaunchAgent was checked with the native app closed: the worker remained online and all 13 saved concept artifacts remained accessible. The native app was then reopened successfully. A launch through the versioned `app` symlink is supported. Login startup is configured with `RunAtLoad`; a full logout/reboot was not performed during installation.
+
+Official provider references checked October 4, 2026:
+- [Astra model capabilities](https://developers.openai.com/api/docs/models/gpt-6-astra)
+- [ChatGPT plan OAuth registration](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+- [Plan usage limit handling](https://developers.openai.com/siwc/token-sharing-open-source/errors-and-recovery)

@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import {
   readFileSync,
+  realpathSync,
   mkdirSync,
   openSync,
   closeSync,
@@ -11,7 +12,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 export function startStudio(supportDirectory) {
   const support = resolve(supportDirectory);
   const config = JSON.parse(
@@ -123,7 +124,7 @@ export function startStudio(supportDirectory) {
 }
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+  fileURLToPath(import.meta.url) === realpathSync(process.argv[1])
 ) {
   startStudio(process.env.STUDIO_SUPPORT || process.argv[2] || ".");
 }

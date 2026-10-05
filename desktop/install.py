@@ -6,6 +6,7 @@ import argparse,pathlib,shutil,sqlite3,plistlib,json,datetime,subprocess,os
 p=argparse.ArgumentParser();p.add_argument('--source',required=True);p.add_argument('--node',required=True);p.add_argument('--ollama');p.add_argument('--bundle',required=True);p.add_argument('--stage-only',action='store_true');p.add_argument('--support');p.add_argument('--desktop');p.add_argument('--agents');args=p.parse_args()
 home=pathlib.Path.home();source=pathlib.Path(args.source).resolve();support=pathlib.Path(args.support) if args.support else home/'Library/Application Support/AI Media Office';desktop=pathlib.Path(args.desktop) if args.desktop else home/'Desktop';agents=pathlib.Path(args.agents) if args.agents else home/'Library/LaunchAgents';stamp=datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
 for f in [support,desktop,agents,support/'data',support/'logs',support/'runtime',support/'models']:f.mkdir(parents=True,exist_ok=True)
+support.chmod(0o700)
 release=support/'releases'/stamp;release.mkdir(parents=True)
 for item in source.iterdir():
  if item.name in ['.git','data','test-results','playwright-report'] or item.name.startswith('.env') or item.name.endswith('.tsbuildinfo'):continue
@@ -32,6 +33,7 @@ service=agents/'com.aimediaoffice.studio.plist'
 if service.exists():shutil.copy2(service,support/('previous-service-'+stamp+'.plist'))
 plist={'Label':'com.aimediaoffice.studio','ProgramArguments':[str(support/'runtime/node'),str(current/'scripts/desktop-supervisor.mjs'),str(support)],'WorkingDirectory':str(current),'RunAtLoad':True,'KeepAlive':True,'ThrottleInterval':10,'ProcessType':'Background','StandardOutPath':str(support/'logs/supervisor.log'),'StandardErrorPath':str(support/'logs/supervisor-error.log')}
 service.write_bytes(plistlib.dumps(plist));service.chmod(0o644)
+registration=None
 if not args.stage_only:
- subprocess.run(['/bin/launchctl','bootstrap',f'gui/{os.getuid()}',str(service)],check=True)
-print(json.dumps({'app':str(app),'support':str(support),'service':str(service),'stagedOnly':args.stage_only},indent=2))
+ registration=subprocess.run(['/bin/launchctl','bootstrap',f'gui/{os.getuid()}',str(service)],capture_output=True,text=True).returncode
+print(json.dumps({'app':str(app),'support':str(support),'service':str(service),'stagedOnly':args.stage_only,'registrationExitCode':registration,'nextStep':'Open the Desktop app to start or reconnect the background service.'},indent=2))

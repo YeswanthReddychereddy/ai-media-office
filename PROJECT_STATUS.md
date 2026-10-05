@@ -13,15 +13,18 @@ Updated: 2026-10-04. Scope: Phase 0 and the first vertical slice, not the entire
 - Local in-app browser verified chat, evidence, five entries, mobile Founder controls, and refresh persistence.
 - Demo currently awaits the Founder’s decision; nothing published.
 
-## In progress
-- Desktop app bundle, login startup, independent background service and no-paid-fallback policy (new Founder request).
-- Desktop installation and recovery tests.
+## Desktop milestone completed
+- Native macOS app installed on the Founder’s Desktop, with a bundled Node 22 runtime and per-user login service.
+- Staged integration check passed: forced web/worker crashes recovered, saved work survived, and no paid fallback/local model was enabled.
+- Installed app visually verified in native WebKit; company worker online with 13 preserved artifacts and one pending Founder review.
+- Quitting the app window left the independent service online; reopening reconnected to the same saved studio.
+- Provider-limit test pauses persisted unfinished work without retries, then resumes at the saved stage after an explicit Founder action.
+- This release includes an experimental, disabled Ollama production adapter; no actual model was downloaded or configured.
 
-## Blocked
-- Nothing blocks the demo slice. Arbitrary-topic research and real creative generation intentionally require later provider work.
-
-## Next
-- Install and verify the desktop service, publish the desktop milestone and verify GitHub CI.
+## Blocked / future milestones
+- Astra/ChatGPT plan sign-in is not connected. Use the official OAuth authorization flow in a later provider milestone; never reuse Codex credentials or fall back to paid API billing.
+- Astra does not render video. Heavy video generation needs a supported video provider and remains outside this first concept-workflow slice.
+- Arbitrary-topic research, final media production, rights review and publishing integrations remain future work.
 
 ## Confirmed Founder policy
 - Keep unfinished jobs saved when AI usage is limited; wait for explicit Resume. No extra charges and no automatic paid fallback. Local-model installation is disabled.
