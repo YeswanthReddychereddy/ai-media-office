@@ -245,7 +245,6 @@ export function OfficeApp() {
       if (!res.ok)
         throw new Error("Studio connection interrupted. Your work is saved.");
       setData(await res.json());
-      setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Connection failed");
     }
@@ -281,6 +280,7 @@ export function OfficeApp() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Action failed");
       await refresh();
+      setError("");
       setNotice(label);
       return d;
     } catch (e) {
@@ -1052,8 +1052,15 @@ export function OfficeApp() {
                 )}
                 <p className="demo-footnote">
                   <FlaskConical size={13} />
-                  {data.mode}. Real queue and persistence. Creative entries and
-                  scores are sample output.
+                  {data.mode}.{" "}
+                  {data.mode.includes("Local model studio")
+                    ? "Local generation, real queue and saved artifacts. Older demo artifacts retain their labels."
+                    : "Real queue and persistence. Creative entries and scores are sample output."}
+                </p>
+                <p className="demo-footnote">
+                  Usage policy: save unfinished work and wait for you. No
+                  automatic paid fallback. Astra and video generation are not
+                  connected.
                 </p>
               </div>
               <aside className="activity-column">

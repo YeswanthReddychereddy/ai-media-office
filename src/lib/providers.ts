@@ -11,9 +11,7 @@ export interface MediaProvider {
   ): Promise<{ assetUri: string; license: string }>;
 }
 export interface AnalyticsProvider {
-  read(
-    channelId: string,
-  ): Promise<{
+  read(channelId: string): Promise<{
     source: string;
     measuredAt: string;
     metrics: Record<string, number>;
@@ -396,13 +394,16 @@ export class OllamaProvider implements TextProvider {
     if (!["localhost", "127.0.0.1", "[::1]"].includes(base.hostname))
       throw new Error("Only a local Ollama endpoint is supported");
     const model = process.env.OLLAMA_MODEL;
-    if (!model) throw new Error("Set OLLAMA_MODEL to an installed local model");
+    if (!model || model.includes("cloud"))
+      throw new Error("Set OLLAMA_MODEL to an installed local model");
     const res = await fetch(new URL("/api/chat", base), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model,
         stream: false,
+        think: false,
+        options: { num_ctx: 4096, num_predict: 700 },
         messages: [
           {
             role: "system",
@@ -411,7 +412,7 @@ export class OllamaProvider implements TextProvider {
           { role: "user", content: question },
         ],
       }),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(120000),
     });
     if (!res.ok) throw new Error("Local model is unavailable");
     const data = await res.json();

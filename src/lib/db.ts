@@ -394,7 +394,7 @@ export class CompanyRepository {
       )
         throw new Error("PROJECT_STOPPED");
       this.run(
-        "UPDATE tasks SET status='COMPLETE',finished_at=?,updated_at=?,output_artifacts=?,input_artifacts=?,quality_score=100 WHERE id=?",
+        "UPDATE tasks SET status='COMPLETE',finished_at=?,updated_at=?,output_artifacts=?,input_artifacts=?,quality_score=NULL WHERE id=?",
         now(),
         now(),
         JSON.stringify([artifact.id]),
@@ -705,9 +705,11 @@ export class CompanyRepository {
         updated_at: w?.updated_at || null,
       },
       mode:
-        process.env.TEXT_PROVIDER === "ollama"
-          ? "Local model chat · demo production"
-          : "Demo studio · no paid APIs",
+        process.env.PRODUCTION_PROVIDER === "ollama"
+          ? "Local model studio · no cloud APIs"
+          : process.env.TEXT_PROVIDER === "ollama"
+            ? "Local model chat · demo production"
+            : "Demo studio · no paid APIs",
     };
   }
   close() {
